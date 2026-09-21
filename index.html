@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Database Rekap Data</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <style>
+        .tab-active { color: #2563eb; border-bottom: 3px solid #2563eb; }
+        .tab-inactive { color: #6b7280; border-bottom: 3px solid transparent; }
+        .error-row { background-color: #fef2f2; }
+        .error-badge { background-color: #fee2e2; color: #991b1b; padding: 2px 8px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen p-4 md:p-8 font-sans">
+    <div class="max-w-7xl mx-auto bg-white shadow-xl rounded-xl p-6 md:p-8">
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-1">Database Rekap Data</h1>
+        <p class="text-center text-gray-500 mb-8">Sistem pemantauan data & status upload otomatis</p>
+        
+        <div class="flex space-x-6 mb-6 border-b border-gray-200 overflow-x-auto">
+            <button id="tab-guru" class="tab-btn tab-active px-4 py-2 font-semibold whitespace-nowrap transition">Data Guru</button>
+            <button id="tab-siswa" class="tab-btn tab-inactive px-4 py-2 font-semibold whitespace-nowrap transition">Data Siswa</button>
+            <button id="tab-error" class="tab-btn tab-inactive px-4 py-2 font-semibold whitespace-nowrap transition flex items-center gap-2">
+                Cek Error / Status <span id="error-count" class="hidden error-badge">0</span>
+            </button>
+        </div>
+
+        <div class="mb-6 relative">
+            <input type="text" id="searchInput" class="w-full p-3 border border-gray-300 rounded-lg pl-10 focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Cari nama, sekolah, atau email...">
+            <svg class="w-5 h-5 absolute left-3 top-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+        </div>
+
+        <div class="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
+            <table class="min-w-full bg-white">
+                <thead id="tableHead" class="bg-gray-50 border-b border-gray-200"></thead>
+                <tbody id="tableBody" class="divide-y divide-gray-200"></tbody>
+            </table>
+        </div>
+        <p id="statusText" class="text-center text-gray-500 mt-4 text-sm">Memuat data...</p>
+    </div>
+
+    <script>
+        // === PASTE 3 LINK CSV DARI TAHAP 3 DI SINI ===
+        const URL_GURU = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSySXV71-fz3uKbQWSqykVJV08fXBlXfc89_JFw2WSWFP2Bi-YnJZhITUJAE1nh-P_78XLr3Sp-2duW/pub?gid=778735875&single=true&output=csv
+"; 
+        const URL_SISWA = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSySXV71-fz3uKbQWSqykVJV08fXBlXfc89_JFw2WSWFP2Bi-YnJZhITUJAE1nh-P_78XLr3Sp-2duW/pub?gid=400713417&single=true&output=csv
+";
+        const URL_ERROR = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSySXV71-fz3uKbQWSqykVJV08fXBlXfc89_JFw2WSWFP2Bi-YnJZhITUJAE1nh-P_78XLr3Sp-2duW/pub?gid=2081918940&single=true&output=csv";
+
+        let currentData = [];
+        let currentTab = 'guru';
+
+        document.getElementById('tab-guru').addEventListener('click', () => switchTab('guru'));
+        document.getElementById('tab-siswa').addEventListener('click', () => switchTab('siswa'));
+        document.getElementById('tab-error').addEventListener('click', () => switchTab('error'));
+
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase();
+            renderTable(currentData.filter(row => Object.values(row).some(val => String(val).toLowerCase().includes(searchTerm))));
+        });
+
+        function switchTab(tab) {
+            currentTab = tab;
+            document.querySelectorAll('.tab-btn').forEach(btn => { btn.classList.remove('tab-active'); btn.classList.add('tab-inactive'); });
+            document.getElementById('tab-' + tab).classList.add('tab-active');
+            document.getElementById('tab-' + tab).classList.remove('tab-inactive');
+            let url = tab === 'guru' ? URL_GURU : (tab === 'siswa' ? URL_SISWA : URL_ERROR);
+            loadData(url);
+        }
+
+        async function loadData(url) {
+            document.getElementById('tableBody').innerHTML = ''; 
+            document.getElementById('tableHead').innerHTML = '';
+            document.getElementById('statusText').innerText = 'Memuat...'; 
+            document.getElementById('statusText').style.display = 'block';
+            
+            if(url.includes("PASTE_LINK")) { document.getElementById('statusText').innerText = '⚠️ Ganti URL CSV di dalam kode HTML!'; return; }
+
+            try {
+                const parsed = Papa.parse(await (await fetch(url)).text(), { header: true, skipEmptyLines: true });
+                currentData = parsed.data.filter(row => Object.values(row).some(val => val !== ""));
+                
+                if(currentTab === 'error') {
+                    document.getElementById('error-count').innerText = currentData.length;
+                    document.getElementById('error-count').classList.remove('hidden');
+                } else {
+                    document.getElementById('error-count').classList.add('hidden');
+                }
+                renderTable(currentData);
+            } catch (error) { document.getElementById('statusText').innerText = '❌ Gagal memuat. Pastikan link CSV benar.'; }
+        }
+
+        function renderTable(data) {
+            const thead = document.getElementById('tableHead'); const tbody = document.getElementById('tableBody');
+            thead.innerHTML = ''; tbody.innerHTML = '';
+            if (data.length === 0) { document.getElementById('statusText').innerText = 'Data kosong atau tidak ditemukan.'; document.getElementById('statusText').style.display = 'block'; return; }
+            document.getElementById('statusText').style.display = 'none';
+            const headers = Object.keys(data[0]);
+            let headRow = document.createElement('tr');
+            headers.forEach(header => { let th = document.createElement('th'); th.className = "py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider"; th.innerText = header; headRow.appendChild(th); });
+            thead.appendChild(headRow);
+
+            data.forEach(row => {
+                let tr = document.createElement('tr');
+                tr.className = currentTab === 'error' ? "error-row hover:bg-red-50 transition" : "hover:bg-gray-50 transition";
+                headers.forEach(header => { let td = document.createElement('td'); td.className = "py-3 px-4 text-sm text-gray-700 whitespace-nowrap"; td.innerText = row[header] || '-'; tr.appendChild(td); });
+                tbody.appendChild(tr);
+            });
+        }
+        switchTab('guru');
+    </script>
+</body>
+</html>
